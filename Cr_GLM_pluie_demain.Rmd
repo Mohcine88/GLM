@@ -1,0 +1,625 @@
+---
+title: "Cr_GLM_pluie.demain"
+author: "MDR"
+date: "2024-06-26"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+Définition du problème : 
+Développer un modèle qui permet de prédire SI il va pleuvoir demain ou pas.
+
+1- Chargement des données 
+```{r}
+library(readr)
+meteo_train <- read_csv("C:/Users/Driouich/Desktop/Modèles linéaires généralisés - R. RYDER-20240611/Projet/meteo.train.csv")
+View(meteo_train)
+```
+
+2- Explorer et analyser les données :
+```{r}
+summary(meteo_train)
+str(meteo_train)
+any(is.na(meteo_train))
+```
+Toutes les variables sont numeriques sauf la variable à expliquer : pluie.demain qui est logique.
+En outre, dans le jeu de données train, heuresement on a pas de valeurs manquantes ce qui signifie que le jeu de données est plus ou moins bon.
+Pour confirmer cela on va utiliser le code ci-dessous :
+```{r}
+library(naniar)
+dtn <- meteo_train
+vis_miss(dtn)
+```
+3- Conversion de la variable à expliquer : pluie.demain en factor et verification de la modification dans le code ci-dessous : 
+```{r}
+# convertir la variable en factor
+dtn$pluie.demain <- factor(dtn$pluie.demain)
+# vérifier la modification
+str(dtn$pluie.demain)
+```
+4- Proportions pour 'pluie.demain'
+```{r}
+# Table et proportions pour 'pluie.demain'
+pluie.demainTable <- table(dtn$pluie.demain)
+proportionspluie.demain <- round(prop.table(pluie.demainTable) * 100, 1)
+labels <- paste(names(pluie.demainTable), "\n", proportionspluie.demain, "%", sep="")
+
+# Diagramme en camembert avec proportions
+pie(pluie.demainTable, labels = labels, main = "Répartition de la variable pluie.demain", col = c("red", "green"))
+```
+on a pratiquement la meme proportion de TRUE et FALSE ce qui est plustot pas mal et cela prouve encore que les données sont plus ou moins propres et surtout equilibrées.
+
+5- box plot des variables vs la variable à expliquer : pluie.demain.
+```{r}
+# Load necessary libraries
+library(ggplot2)
+
+# Generate boxplots for each numeric variable in the dataset
+boxplot_plots <- lapply(names(dtn)[sapply(dtn, is.numeric)], function(variable){
+  ggplot(dtn, aes(x = factor(pluie.demain), y = .data[[variable]], fill = factor(pluie.demain))) +
+    geom_boxplot() +
+    labs(
+      title = paste("Boxplot of", variable, "vs. pluie de demain"),
+      x = "Pluie de demain",
+      y = variable
+    ) +
+    theme_minimal()
+})
+
+# To print all the plots
+lapply(boxplot_plots, print)
+```
+les box plot nous montrent qu'il n'y ait pas de valeurs aberrantes et que les données sont plus ou moins cohérentes
+6- 1ere tentation GLM via la fonction : STEP ==> selecttion en automatique.
+```{r}
+# Construction du modèle initial avec toutes les variables
+mdr2 <- glm(pluie.demain ~ 
+              . , data = dtn, family = binomial)
+summary(mdr2)
+p4 = step(mdr2)
+summary(p4) # AIC=1393.27
+plot(p4$residuals)
+# Diagnostics de base avec la fonction plot
+par(mfrow = c(2, 2))
+plot(p4)
+# p4
+# Diagnostics supplémentaires avec le package car
+library(car)
+residualPlots(p4)
+
+
+influencePlot(p4, main = "Influence Plot", sub = "Circle size is proportional to Cook's Distance")
+
+# Vérifications avec le package performance
+if (!require(performance)) {
+  install.packages("performance")
+  library(performance)
+}
+check_collinearity(p4)
+model_performance(p4)
+#install.packages("lmtest")
+library(lmtest)
+
+# Effectuer le test du rapport de vraisemblance (Likelihood Ratio Test)
+test_lrmdr2 <- lrtest(mdr2)
+
+# Afficher les résultats du test
+print(test_lrmdr2) # 2.2e-16 ***
+```
+
+6-1 le model retenu via la fonction step :
+le mdr5 est le model retenu via STEP, avec un AIC=1283.3 et un Likelihood Ratio Test 2.2e-16 *** (rapport vraisemblance)
+```{r}
+# Charger les bibliothèques nécessaires
+if (!require(car)) {
+  install.packages("car")
+  library(car)
+}
+if (!require(performance)) {
+  install.packages("performance")
+  library(performance)
+}
+
+# Construire le modèle initial avec toutes les variables
+mdr5 <- glm(formula = pluie.demain ~ ...1 + Temperature.daily.mean..2.m.above.gnd. + 
+            Mean.Sea.Level.Pressure.daily.mean..MSL. + Snowfall.amount.raw.daily.sum..sfc. + 
+            Medium.Cloud.Cover.daily.mean..mid.cld.lay. + Wind.Speed.daily.mean..80.m.above.gnd. + 
+            Wind.Direction.daily.mean..80.m.above.gnd. + Wind.Direction.daily.mean..900.mb. + 
+            Temperature.daily.min..2.m.above.gnd. + Mean.Sea.Level.Pressure.daily.max..MSL. + 
+            Mean.Sea.Level.Pressure.daily.min..MSL. + Total.Cloud.Cover.daily.max..sfc. + 
+            Total.Cloud.Cover.daily.min..sfc. + Medium.Cloud.Cover.daily.max..mid.cld.lay. + 
+            Wind.Speed.daily.max..10.m.above.gnd. + Wind.Speed.daily.min..10.m.above.gnd. + 
+            Wind.Gust.daily.max..sfc., family = binomial, data = dtn)
+
+# Afficher le résumé du modèle initial
+summary(mdr5)
+
+# Sélection de variables avec la fonction step
+p7 <- step(mdr5)
+
+# Afficher le résumé du modèle après sélection de variables
+summary(p7) # AIC=1283.3
+
+# Plot des résidus
+plot(p7$residuals)
+
+# Diagnostics de base avec la fonction plot
+par(mfrow = c(2, 2))
+plot(p7)
+
+# Diagnostics supplémentaires avec le package car
+library(car)
+residualPlots(p7)
+influencePlot(p7, main = "Influence Plot", sub = "Circle size is proportional to Cook's Distance")
+
+# Vérifications avec le package performance
+library(performance)
+vif_values <- vif(p7)
+print(vif_values)
+
+model_perf <- model_performance(p7)
+print(model_perf)
+#install.packages("lmtest")
+library(lmtest)
+
+# Effectuer le test du rapport de vraisemblance (Likelihood Ratio Test)
+test_lrmdr5 <- lrtest(mdr5)
+
+# Afficher les résultats du test
+print(test_lrmdr5) # 2.2e-16 ***
+```
+7- Sélection des caractéristiques numérique manuellement sans la fonction STEP
+Partie 1 : Charger les bibliothèques 
+```{r}
+# Charger la bibliothèque ggplot2 si ce n'est pas déjà fait
+if (!require(ggplot2)) {
+  install.packages("ggplot2")
+  library(ggplot2)
+}
+
+# Charger la bibliothèque gridExtra si ce n'est pas déjà fait
+if (!require(gridExtra)) {
+  install.packages("gridExtra")
+  library(gridExtra)
+}
+
+```
+Partie 2 : Définir la fonction pour générer des boxplots bivariés
+
+```{r}
+# Créer une fonction pour générer des boxplots bivariés
+boxplot_bivarie <- function(dtn, variable_x, variable_y) {
+  ggplot(dtn, aes_string(x = variable_x, y = variable_y)) +
+    geom_boxplot(aes(fill = as.factor(get(variable_x)))) +
+    labs(title = paste("Boxplot de", variable_y, "par", variable_x),
+         x = variable_x, y = variable_y) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+Partie 3 : Générer les boxplots pour les variables quantitatives
+```{r}
+# Variables quantitatives à explorer
+variables_quantitatives <- names(dtn)[sapply(dtn, is.numeric)]
+
+# Créer un boxplot bivarié pour chaque variable quantitative par rapport à pluie.demain
+boxplot_plots <- lapply(variables_quantitatives, function(variable) {
+  ggplot(dtn, aes(x = as.factor(pluie.demain), y = .data[[variable]], fill = as.factor(pluie.demain))) +
+    geom_boxplot() +
+    labs(title = paste("Boxplot de", variable, "par pluie.demain"),
+         x = "pluie.demain", y = variable) +
+    theme_minimal()
+})
+```
+Partie 4 : Afficher les boxplots en les divisant en quatre parties
+Cette partie est deja realisé ci dessus :  5- box plot des variables vs la variable à expliquer : pluie.demain.
+7-1  test de kruskal_walis 
+ce test ca nous permettre de classer les variable quantitatives :
+```{r}
+# Charger les bibliothèques nécessaires
+if (!require(dplyr)) {
+  install.packages("dplyr")
+  library(dplyr)
+}
+
+# Sélectionner les variables numériques
+variables_numeriques <- names(dtn)[1:46]
+
+# Créer un tableau pour les résultats
+results <- data.frame(Variable = character(), Kruskal_Wallis = numeric(), P_value = numeric(), stringsAsFactors = FALSE)
+
+for (var in variables_numeriques) {
+  # Effectuer le test de Kruskal-Wallis
+  kruskal_test <- kruskal.test(dtn[[var]] ~ dtn$pluie.demain)
+  
+  # Ajouter les résultats au tableau
+  results <- rbind(results, data.frame(Variable = var, Kruskal_Wallis = kruskal_test$statistic, P_value = kruskal_test$p.value, stringsAsFactors = FALSE))
+}
+
+# Trier les résultats par la statistique de test décroissant
+results <- results[order(results$Kruskal_Wallis, decreasing = TRUE), ]
+
+# Afficher les résultats
+print(results)
+```
+
+ ici on que retenir que les résultats avec une valeur p inférieure à 0.05 : 
+```{r}
+# Charger les bibliothèques nécessaires
+if (!require(dplyr)) {
+  install.packages("dplyr")
+  library(dplyr)
+}
+
+# Sélectionner les variables numériques
+variables_numeriques <- names(dtn)[1:46]
+
+# Créer un tableau pour les résultats
+results <- data.frame(Variable = character(), Kruskal_Wallis = numeric(), P_value = numeric(), stringsAsFactors = FALSE)
+
+for (var in variables_numeriques) {
+  # Effectuer le test de Kruskal-Wallis
+  kruskal_test <- kruskal.test(dtn[[var]] ~ dtn$pluie.demain)
+  
+  # Ajouter les résultats au tableau
+  results <- rbind(results, data.frame(Variable = var, Kruskal_Wallis = kruskal_test$statistic, P_value = kruskal_test$p.value, stringsAsFactors = FALSE))
+}
+
+# Filtrer les résultats avec une p-value < 0.05
+results_significatifs <- results %>% filter(P_value < 0.05)
+
+# Trier les résultats par la statistique de test décroissant
+results_significatifs <- results_significatifs[order(results_significatifs$Kruskal_Wallis, decreasing = TRUE), ]
+
+# Afficher les résultats significatifs
+print(results_significatifs)
+```
+
+Suite a la selection manuelle en se basant sur la selection pure et dure des variable : 
+- Des boxplots bivariés visuelle 
+- Le test de kruskal_walis : classment des variable et filtrage sur les p-values 
+En suite j'ai fait le choix de me limiter à 10 variables
+Maintenant je vais analyser la correlation entre ces 10 variables explicatives
+on va tester la correlation entre les 10 variables les plus significatives :
+```{r}
+# Charger les bibliothèques nécessaires
+if (!require(corrplot)) {
+  install.packages("corrplot")
+  library(corrplot)
+}
+
+# Sélectionner les variables spécifiques
+# Remplacer "var1", "var2", etc. par les noms réels des 10 variables que vous souhaitez analyser
+selected_variables <- dtn[, c("Medium.Cloud.Cover.daily.mean..mid.cld.lay.", "Mean.Sea.Level.Pressure.daily.min..MSL.",
+ "Medium.Cloud.Cover.daily.max..mid.cld.lay.", "Mean.Sea.Level.Pressure.daily.mean..MSL.", "Total.Precipitation.daily.sum..sfc.", 
+ "Mean.Sea.Level.Pressure.daily.max..MSL.", "High.Cloud.Cover.daily.max..high.cld.lay.", "Total.Cloud.Cover.daily.mean..sfc.", "High.Cloud.Cover.daily.mean..high.cld.lay.",
+ "Wind.Gust.daily.max..sfc.")]
+
+# Calculer la matrice de corrélation
+correlation_matrix <- cor(selected_variables, use = "complete.obs", method = "pearson")
+
+# Afficher la matrice de corrélation
+corrplot(correlation_matrix, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45, addCoef.col = "black", 
+         number.cex = 0.7)
+```
+
+suite à un premiere selection ou enlevement des variable trop correlée on va effectuer un second test de correlation : 
+```{r}
+# Charger les bibliothèques nécessaires
+if (!require(corrplot)) {
+  install.packages("corrplot")
+  library(corrplot)
+}
+
+# Sélectionner les variables spécifiques
+# Remplacer "var1", "var2", etc. par les noms réels des 9 variables que vous souhaitez analyser
+selected_variables <- dtn[, c("Medium.Cloud.Cover.daily.max..mid.cld.lay." ,"Total.Precipitation.daily.sum..sfc.", 
+                              "Mean.Sea.Level.Pressure.daily.max..MSL.", "High.Cloud.Cover.daily.max..high.cld.lay.", "Total.Cloud.Cover.daily.mean..sfc.", "High.Cloud.Cover.daily.mean..high.cld.lay.",
+                              "Wind.Gust.daily.max..sfc.")]
+
+# Calculer la matrice de corrélation
+correlation_matrix <- cor(selected_variables, use = "complete.obs", method = "pearson")
+
+# Afficher la matrice de corrélation
+corrplot(correlation_matrix, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45, addCoef.col = "black", 
+         number.cex = 0.7)
+```
+le model retenue apres analyse de la correlation est celui qui fera l'objet du glm ci dessous : mdr6
+```{r}
+# Construction du modèle avec les variables choisis manuellement
+mdr6 <- glm(pluie.demain ~ Medium.Cloud.Cover.daily.max..mid.cld.lay.+ Total.Precipitation.daily.sum..sfc.+
+Mean.Sea.Level.Pressure.daily.max..MSL.+High.Cloud.Cover.daily.max..high.cld.lay.+Total.Cloud.Cover.daily.mean..sfc.
++High.Cloud.Cover.daily.mean..high.cld.lay.+
+Wind.Gust.daily.max..sfc. , data = dtn, family = binomial)
+summary(mdr6)
+p6 = step(mdr6)
+summary(p6) # AIC: 1347.5
+plot(p6$residuals)
+# Diagnostics de base avec la fonction plot
+par(mfrow = c(2, 2))
+plot(p6)
+# p6
+# Diagnostics supplémentaires avec le package car
+# Charger la bibliothèque car si ce n'est pas déjà fait
+if (!require(car)) {
+  install.packages("car")
+  library(car)
+}
+vif(p6)
+
+influencePlot(p6, main = "Influence Plot", sub = "Circle size is proportional to Cook's Distance")
+
+# Vérifications avec le package performance
+# Charger la bibliothèque performance si ce n'est pas déjà fait
+if (!require(performance)) {
+  install.packages("performance")
+  library(performance)
+}
+check_collinearity(p6)
+model_performance(p6)
+#install.packages("lmtest")
+library(lmtest)
+
+# Effectuer le test du rapport de vraisemblance (Likelihood Ratio Test)
+test_lrmdr6 <- lrtest(mdr6)
+
+# Afficher les résultats du test
+print(test_lrmdr6)
+```
+7-2 Effectuer le test du rapport de vraisemblance : 
+```{r}
+lrt_result <- anova(mdr6, mdr5, test = "LRT")
+
+# Afficher les résultats
+print(lrt_result)
+```
+
+Pour le model retenue via selection manuelle mdr6 : le AIC: 1343 supperieure a AIC  du model mdr5(STEP) et on a pratiquement le mm Likelihood ratio : 2.2e-16 *** 
+parcontre 
+Je decide pour la suite de retenir le model : mdr5 selectionné via choix STEP
+JE VAIS esseyer d'affiner le model mdr5 en regardant la correlation entre les variables quantitatives 
+```{r}
+# Construire le modèle initial avec toutes les variables selectionnées via STEP
+mdr7 <- glm(formula = pluie.demain ~ ...1 +
+              Temperature.daily.mean..2.m.above.gnd.+
+              Mean.Sea.Level.Pressure.daily.mean..MSL. +
+              Wind.Gust.daily.max..sfc.  
+            +Wind.Speed.daily.min..10.m.above.gnd. 
+            + Wind.Speed.daily.max..10.m.above.gnd.
+            + Medium.Cloud.Cover.daily.max..mid.cld.lay.
+            
+            + Total.Cloud.Cover.daily.max..sfc. 
+            + Mean.Sea.Level.Pressure.daily.min..MSL.
+            + Mean.Sea.Level.Pressure.daily.max..MSL. 
+            + Wind.Direction.daily.mean..900.mb.
+            + Wind.Speed.daily.mean..80.m.above.gnd.
+            + Medium.Cloud.Cover.daily.mean..mid.cld.lay., family = binomial, data = dtn)
+
+# Afficher le résumé du modèle initial
+summary(mdr7)
+p8 = step(mdr7)
+summary(p8) # AIC: 1347.5
+plot(p8$residuals)
+# Diagnostics de base avec la fonction plot
+par(mfrow = c(2, 2))
+plot(p8)
+# p8
+# Diagnostics supplémentaires avec le package car
+# Charger la bibliothèque car si ce n'est pas déjà fait
+if (!require(car)) {
+  install.packages("car")
+  library(car)
+}
+vif(p8)
+
+influencePlot(p8, main = "Influence Plot", sub = "Circle size is proportional to Cook's Distance")
+
+# Vérifications avec le package performance
+# Charger la bibliothèque performance si ce n'est pas déjà fait
+if (!require(performance)) {
+  install.packages("performance")
+  library(performance)
+}
+check_collinearity(p8)
+model_performance(p8)
+```
+ en enleves les variable non significatives en terme de p-values
+ 
+cela va nous donner : 
+```{r}
+# Construire le modèle initial avec toutes les variables
+mdr8 <- glm(formula = pluie.demain ~ Temperature.daily.mean..2.m.above.gnd. +
+              Wind.Gust.daily.max..sfc. +
+              Wind.Speed.daily.min..10.m.above.gnd. +
+              Medium.Cloud.Cover.daily.max..mid.cld.lay. +
+              Total.Cloud.Cover.daily.max..sfc. +
+              Wind.Direction.daily.mean..900.mb. +
+              Medium.Cloud.Cover.daily.mean..mid.cld.lay. , family = binomial, data = dtn)
+
+# Afficher le résumé du modèle initial
+summary(mdr8) # AIC = 1347.160
+p9 = step(mdr8)
+summary(p9) 
+plot(p9$residuals)
+# Diagnostics de base avec la fonction plot
+par(mfrow = c(2, 2))
+plot(p9)
+# p9
+# Diagnostics supplémentaires avec le package car
+# Charger la bibliothèque car si ce n'est pas déjà fait
+if (!require(car)) {
+  install.packages("car")
+  library(car)
+}
+vif(p9)
+
+influencePlot(p9, main = "Influence Plot", sub = "Circle size is proportional to Cook's Distance")
+
+# Vérifications avec le package performance
+# Charger la bibliothèque performance si ce n'est pas déjà fait
+if (!require(performance)) {
+  install.packages("performance")
+  library(performance)
+}
+check_collinearity(p9)
+model_performance(p9)
+#install.packages("lmtest")
+library(lmtest)
+
+# Effectuer le test du rapport de vraisemblance (Likelihood Ratio Test)
+test_lrmdr8 <- lrtest(mdr8)
+
+# Afficher les résultats du test
+print(test_lrmdr8)
+```
+
+pour le modele mdr8 : AIC: 1347.7 et pas de changement dans le rapport de vraisemblance (Likelihood Ratio Test)
+8-1 Interprétation des résultats
+```{r}
+# Obtenir les coefficients estimés du modèle
+coefficients <- coef(mdr8)
+
+# Calculer les rapports de cotes en exponentiant les coefficients
+odds_ratios <- exp(coefficients)
+
+# Créer un tableau avec les noms des variables et leurs rapports de cotes
+variables <- names(coefficients)
+tableau_odds_ratios <- data.frame(Variable = variables, OddsRatio = odds_ratios)
+
+# Afficher le tableau des rapports de cotes
+tableau_odds_ratios
+```
+le tableau tableau_odds_ratios indique les quotes est multiplier par les oddsRatio
+8-2 La courbe ROC
+```{r}
+if (!require(caret)) {
+  install.packages("caret")
+  library(caret)
+}
+# Vérifier si la bibliothèque pROC est déjà installée, sinon l'installer
+if (!require(pROC)) {
+  install.packages("pROC")
+  library(pROC)
+}
+# Charger les fichiers CSV
+library(readr)
+meteo_test <- read_csv("C:/Users/Driouich/Desktop/Modèles linéaires généralisés - R. RYDER-20240611/Projet/meteo.test.csv")
+View(meteo_test)
+dts <- meteo_test
+train_set <- dtn
+test_set <- dts
+
+# Vérifier les dimensions des jeux de données
+cat("Dimensions du jeu de données d'entraînement:", dim(train_set), "\n")
+cat("Dimensions du jeu de données de test:", dim(test_set), "\n")
+
+# Vérifier le contenu de la colonne 'pluie.demain'
+if ("pluie.demain" %in% colnames(train_set)) {
+  cat("Aperçu des valeurs dans 'pluie.demain' (Entraînement) :\n")
+  print(head(train_set$pluie.demain))
+  cat("Distribution des classes dans 'pluie.demain' (Entraînement) :\n")
+  print(table(train_set$pluie.demain))
+} else {
+  cat("La colonne 'pluie.demain' n'existe pas dans le jeu de données d'entraînement.\n")
+}
+
+# Si la colonne 'pluie.demain' est absente ou vide, il faudra corriger cela
+# Supposons que 'pluie.demain' soit une colonne créée pendant la préparation des données
+
+# Exemple de correction : Générer des valeurs aléatoires pour 'pluie.demain' (pour démonstration seulement)
+set.seed(123) # Fixer la graine pour reproductibilité
+train_set$pluie.demain <- sample(0:1, size = nrow(train_set), replace = TRUE)
+
+# Vérifier à nouveau la distribution des classes après correction
+cat("Distribution des classes dans 'pluie.demain' après correction (Entraînement) :\n")
+print(table(train_set$pluie.demain))
+
+# Continuer avec l'évaluation du modèle
+# Prédire les probabilités pour l'ensemble d'entraînement
+probas_train <- predict(mdr8, train_set, type = "response")
+
+# Prédire les classes en utilisant un seuil de probabilité de 0.5
+seuil <- 0.5
+predictions_train <- ifelse(probas_train >= seuil, 1, 0)
+predictions_train <- factor(predictions_train, levels = c(0, 1))
+
+# Convertir la colonne 'pluie.demain' en facteur
+train_set$pluie.demain <- factor(train_set$pluie.demain, levels = c(0, 1))
+
+# Créer la matrice de confusion
+confusion_matrix <- confusionMatrix(predictions_train, train_set$pluie.demain)
+
+# Calculer l'AUC
+roc_curve <- roc(response = train_set$pluie.demain, predictor = probas_train)
+auc_value <- auc(roc_curve)
+
+# Afficher les résultats
+print(confusion_matrix)
+cat("AUC:", auc_value, "\n")
+
+# Afficher la courbe ROC
+plot(roc_curve, main = "Courbe ROC - Ensemble d'Entraînement", col = "blue", print.auc = TRUE)
+```
+
+9- on va effectuer la prediction
+```{r}
+library(readr)
+meteo_test <- read_csv("C:/Users/Driouich/Desktop/Modèles linéaires généralisés - R. RYDER-20240611/Projet/meteo.test.csv")
+View(meteo_test)
+# Installer et charger les bibliothèques nécessaires
+if (!require(caret)) {
+  install.packages("caret")
+  library(caret)
+}
+
+# Charger les fichiers CSV
+dts <- meteo_test
+train_set <- dtn
+test_set <- dts
+
+# Vérifier les dimensions des jeux de données
+cat("Dimensions du jeu de données d'entraînement:", dim(train_set), "\n")
+cat("Dimensions du jeu de données de test:", dim(test_set), "\n")
+
+# Vérifier que le modèle mdr8 est chargé dans l'environnement
+# print(summary(mdr8))
+
+# Prédire les probabilités pour l'ensemble de test
+probas_test <- predict(mdr8, test_set, type = "response")
+
+# Prédire les classes en utilisant un seuil de probabilité de 0.5
+seuil <- 0.5
+predictions_test <- ifelse(probas_test >= seuil, 1, 0)
+
+# Convertir les prédictions en facteurs
+predictions_test <- factor(predictions_test, levels = c(0, 1))
+
+# Ajouter une colonne Identifiant si elle n'existe pas
+if (!"Identifiant" %in% colnames(test_set)) {
+  test_set$Identifiant <- 1:nrow(test_set)
+}
+
+# Ajouter les colonnes de prédictions et probabilités au DataFrame de test
+test_set$Probabilités <- probas_test
+test_set$Prédictions <- predictions_test
+
+# Ajouter la colonne pluie.demain avec les valeurs "True" ou "False"
+test_set$pluie.demain <- ifelse(predictions_test == 1, "True", "False")
+
+# Enregistrer le DataFrame modifié dans un fichier .csv pour l'ensemble de test
+write.csv(test_set, file = "meteo.test.csv", row.names = FALSE)
+
+# Vérifier la création du fichier .csv
+cat("Les prédictions pour l'ensemble de test ont été enregistrées dans le fichier 'meteo.test.csv'.\n")
+```
+
+
